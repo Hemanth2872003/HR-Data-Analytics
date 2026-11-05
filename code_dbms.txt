@@ -1,0 +1,300 @@
+create database projects_hr;
+use projects_hr;
+select *  from human_resources;
+
+-- data cleaning and preprocessing--
+
+ALTER TABLE human_resources
+CHANGE COLUMN ï»¿id emp_id VARCHAR(20) NULL;
+
+
+DESCRIBE human_resources;
+SET sql_safe_updates = 0;
+
+UPDATE human_resources
+SET birthdate = CASE
+		WHEN birthdate LIKE '%/%' THEN date_format(str_to_date(birthdate,'%m/%d/%Y'),'%Y-%m-%d')
+        WHEN birthdate LIKE '%-%' THEN date_format(str_to_date(birthdate,'%m-%d-%Y'),'%Y-%m-%d')
+        ELSE NULL
+		END;
+	
+ALTER TABLE human_resources
+MODIFY COLUMN birthdate DATE;
+
+Select * from human_resources;
+
+-- change the data format and datatype of hire_date column
+
+UPDATE human_resources
+SET hire_date = CASE
+		WHEN hire_date LIKE '%/%' THEN date_format(str_to_date(hire_date,'%m/%d/%Y'),'%Y-%m-%d')
+        WHEN hire_date LIKE '%-%' THEN date_format(str_to_date(hire_date,'%m-%d-%Y'),'%Y-%m-%d')
+        ELSE NULL
+		END;
+        
+ALTER TABLE human_resources
+MODIFY COLUMN hire_date DATE;
+
+-- change the date format and datatpye of termdate column
+UPDATE human_resources
+SET termdate = date(str_to_date(termdate, '%Y-%m-%d %H:%i:%s UTC'))
+WHERE termdate IS NOT NULL AND termdate !='';
+
+UPDATE human_resources
+SET termdate = NULL
+WHERE termdate = '';
+
+
+-- create age column
+ALTER TABLE human_resources
+ADD column age INT;
+
+UPDATE human_resources
+SET age = timestampdiff(YEAR,birthdate,curdate());
+
+Select * from human_resources;
+
+SELECT min(age), max(age) FROM human_resources;
+
+-- 1. What is the gender breakdown of employees in the company
+SELECT * FROM human_resources;
+
+SELECT gender, COUNT(*) AS count 
+FROM human_resources
+WHERE termdate IS NULL
+GROUP BY gender;
+
+-- 2. What is the race breakdown of employees in the company
+SELECT race , COUNT(*) AS count
+FROm human_resources
+WHERE termdate IS NULL
+GROUP BY race;
+
+-- 3. What is the age distribution of employees in the company
+SELECT 
+	CASE
+		WHEN age>=18 AND age<=24 THEN '18-24'
+        WHEN age>=25 AND age<=34 THEN '25-34'
+        WHEN age>=35 AND age<=44 THEN '35-44'
+        WHEN age>=45 AND age<=54 THEN '45-54'
+        WHEN age>=55 AND age<=64 THEN '55-64'
+        ELSE '65+'
+	END AS age_group,
+    COUNT(*) AS count
+    FROM human_resources
+    WHERE termdate IS NULL
+    GROUP BY age_group
+    ORDER BY age_group;
+    
+    SELECT 
+	CASE
+		WHEN age>=18 AND age<=24 THEN '18-24'
+        WHEN age>=25 AND age<=34 THEN '25-34'
+        WHEN age>=35 AND age<=44 THEN '35-44'
+        WHEN age>=45 AND age<=54 THEN '45-54'
+        WHEN age>=55 AND age<=64 THEN '55-64'
+        ELSE '65+'
+	END AS age_group, gender,
+    COUNT(*) AS count
+    FROM human_resources
+    WHERE termdate IS NULL
+    GROUP BY age_group ,gender
+    ORDER BY age_group,gender;
+    
+-- 4. How many employees work at HQ vs remote
+SELECT location,COUNT(*) AS count
+FROM human_resources
+WHERE termdate IS NULL
+GROUP BY location;
+
+
+-- 5. What is the average length of employement who have been teminated.
+SELECT ROUND(AVG(year(termdate) - year(hire_date)),0) AS length_of_emp
+FROM human_resources
+WHERE termdate IS NOT NULL AND termdate <= curdate();
+
+-- 6. How does the gender distribution vary acorss dept. and job titles
+SELECT *  FROM human_resources;
+
+SELECT department,jobtitle,gender,COUNT(*) AS count
+FROM human_resources
+WHERE termdate IS NOT NULL
+GROUP BY department, jobtitle,gender
+ORDER BY department, jobtitle,gender;
+
+SELECT department,gender,COUNT(*) AS count
+FROM human_resources
+WHERE termdate IS NOT NULL
+GROUP BY department,gender
+ORDER BY department,gender;
+
+-- 7. What is the distribution of jobtitles acorss the company
+SELECT jobtitle, COUNT(*) AS count
+FROM human_resources
+WHERE termdate IS NULL
+GROUP BY jobtitle
+ORDER BY jobtitle DESC;
+
+-- 8. Which dept has the higher turnover/termination rate
+
+SELECT * FROM human_resources;
+
+SELECT department,
+		COUNT(*) AS total_count,
+        COUNT(CASE
+				WHEN termdate IS NOT NULL AND termdate <= curdate() THEN 1 
+				END) AS terminated_count,
+		ROUND((COUNT(CASE
+					WHEN termdate IS NOT NULL AND termdate <= curdate() THEN 1 
+                    END)/COUNT(*))*100,2) AS termination_rate
+		FROM human_resources
+        GROUP BY department
+        ORDER BY termination_rate DESC;
+        
+        
+-- 9. What is the distribution of employees across location_state
+SELECT location_state, COUNT(*) AS count
+FROM human_resources
+WHERE termdate IS NULL
+GROUP BY location_state;
+
+SELECT location_city, COUNT(*) AS count
+FROM human_resources
+WHERE termdate IS NULL
+GROUP BY location_city;
+
+-- 10. How has the company's employee count changed over time based on hire and termination date.
+SELECT * FROM human_resources;
+
+SELECT year,
+		hires,
+        terminations,
+        hires-terminations AS net_change,
+        (terminations/hires)*100 AS change_percent
+	FROM(
+			SELECT YEAR(hire_date) AS year,
+            COUNT(*) AS hires,
+            SUM(CASE 
+					WHEN termdate IS NOT NULL AND termdate <= curdate() THEN 1 
+				END) AS terminations
+			FROM human_resources
+            GROUP BY YEAR(hire_date)) AS subquery
+GROUP BY year
+ORDER BY year;
+
+-- 11. What is the tenure distribution for each dept.
+SELECT department, round(avg(datediff(termdate,hire_date)/365),0) AS avg_tenure
+FROM human_resources
+WHERE termdate IS NOT NULL AND termdate<= curdate()
+GROUP BY department;
+
+-- 12. Termination and hire breakdown gender wise.
+SELECT 
+	gender,
+    total_hires,
+    total_terminations,
+    ROUND((total_terminations/total_hires)*100,2)AS termination_rate
+FROM(
+	SELECT gender,
+    Count(*) AS total_hires,
+    COUNT(CASE
+			WHEN termdate IS NOT NULL AND termdate <= curdate() THEN 1
+            END) AS total_terminations
+		from human_resources
+		GROUP BY gender) AS subquery
+        GROUP BY gender;
+        
+-- age.
+	SELECT 
+	age,
+    total_hires,
+    total_terminations,
+    ROUND((total_terminations/total_hires)*100,2)AS termination_rate
+FROM(
+	SELECT age,
+    Count(*) AS total_hires,
+    COUNT(CASE
+			WHEN termdate IS NOT NULL AND termdate <= curdate() THEN 1
+            END) AS total_terminations
+		from human_resources
+		GROUP BY age) AS subquery
+        GROUP BY age;
+        
+-- department
+SELECT 
+	department,
+    total_hires,
+    total_terminations,
+    ROUND((total_terminations/total_hires)*100,2)AS termination_rate
+FROM(
+	SELECT department,
+    Count(*) AS total_hires,
+    COUNT(CASE
+			WHEN termdate IS NOT NULL AND termdate <= curdate() THEN 1
+            END) AS total_terminations
+		from human_resources
+		GROUP BY department) AS subquery
+        GROUP BY department;
+        
+-- race
+SELECT 
+	race,
+    total_hires,
+    total_terminations,
+    ROUND((total_terminations/total_hires)*100,2)AS termination_rate
+FROM(
+	SELECT race,
+    Count(*) AS total_hires,
+    COUNT(CASE
+			WHEN termdate IS NOT NULL AND termdate <= curdate() THEN 1
+            END) AS total_terminations
+		from human_resources
+		GROUP BY race) AS subquery
+        GROUP BY race;
+        
+-- 13. Employee Growth Rate by Department and Year
+-- This analysis can help visualize the growth trends of different departments over time.
+SELECT department, YEAR(hire_date) AS year, COUNT(*) AS hires
+FROM human_resources
+GROUP BY department, YEAR(hire_date)
+ORDER BY department, year;
+
+-- 14. Employee Retention Rate by Year of Hire
+-- Understanding how long employees stay with the company based on their year of hire can provide insights into employee retention.
+SELECT YEAR(hire_date) AS year, 
+       ROUND((COUNT(*) - COUNT(termdate)) / COUNT(*), 2) AS retention_rate
+FROM human_resources
+GROUP BY YEAR(hire_date)
+ORDER BY year;
+
+-- 15. Diversity Analysis
+-- Assess the diversity of the workforce in terms of race and gender within each department.
+SELECT department, race, gender, COUNT(*) AS count
+FROM human_resources
+GROUP BY department, race, gender
+ORDER BY department, race, gender;
+
+-- 16. Average Tenure by Job Title
+-- This query can help identify roles with the highest and lowest average tenure, 
+-- indicating potential areas for improvement in employee satisfaction or recruitment. 
+SELECT jobtitle, ROUND(AVG(DATEDIFF(IFNULL(termdate, CURDATE()), hire_date)/365), 2) AS average_tenure_years
+FROM human_resources
+GROUP BY jobtitle
+ORDER BY average_tenure_years DESC;
+
+-- 17. Location-based Analysis
+-- Understand the distribution of employees and various metrics like average tenure or department size by location (city or state).
+SELECT location_state, location_city, COUNT(*) AS employee_count, 
+       AVG(TIMESTAMPDIFF(YEAR, hire_date, IFNULL(termdate, CURDATE()))) AS average_tenure
+FROM human_resources
+GROUP BY location_state, location_city
+ORDER BY location_state, location_city;
+
+
+-- 18. impact of Demographics on Retention
+-- Investigate how different demographics (age, gender, race) affect retention rates.
+SELECT gender, race, 
+       ROUND(AVG(CASE WHEN termdate IS NULL THEN 1 ELSE 0 END), 2) AS retention_rate
+FROM human_resources
+GROUP BY gender, race
+ORDER BY retention_rate DESC;
